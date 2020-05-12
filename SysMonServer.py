@@ -6,14 +6,6 @@ import struct
 
 VERSION = "0.1"
 
-# Some colors as ANSI Escape codes for terminal output
-class Color:
-    red = '\033[91m'
-    green = '\033[92m'
-    yellow = '\033[93m'
-    cyan = '\033[96m'
-    end = '\033[0m'
-
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -26,8 +18,8 @@ class Packet:
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-# Object class for connected monitor clients
-class Monitor:
+# Object class for connected watchdog clients
+class Watchdog:
     def __init__(self):
         # Static variables
         self.hostname = None
@@ -63,19 +55,29 @@ class Display:
         self.scr.addstr(y, x, string)
 
     def updateTime(self): # Update the time
-        datetime = time.strftime("%Y-%m-%d    %H:%M:%S", time.gmtime())
-        self.scr.addstr(3, 0, datetime)
+        date_time = time.strftime("%m-%d-%Y  %H:%M:%S", time.localtime())
+        self.scr.addstr(2, 0, date_time)
         self.scr.refresh()
 
-    def updateConnectedHosts(self):
+    def updateConnectedNum(self, watchdogs):
+        total_hosts = len(watchdogs)
+        connected_hosts = 0
+        #for x in watchdogs:
+        #    if host = connected:
+        #        connected_hosts += 1
+        host_string = "{}/{} Host(s) Online    ".format(connected_hosts, total_hosts)
+        self.scr.addstr(3, 0, host_string)
+        self.scr.refresh()
+
+    def updateConnectedHosts(self, watchdogs):
         pass
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-def getUptime(): # Get system uptime and return a tuple (days, hours, minutes)
-    seconds = time.time() #psutil.boot_time()
+def getUptime(boot_time): # Get system uptime and return a tuple (days, hours, minutes)
+    seconds = time.time() - boot_time #psutil.boot_time()
     minute, sec = divmod(seconds, 60)
     hour, minute = divmod(minute, 60)
     day, hour = divmod(hour, 24)
@@ -89,17 +91,18 @@ def getUptime(): # Get system uptime and return a tuple (days, hours, minutes)
 def main(scr=""):
     # Variables
     running = True                  # parallel threads will rejoin if this is false
-    monitor_ids = []                # an array containing the ids of monitors linked to this server
-    monitors = {}                   # A dictionary matching monitor ids to their object class reference
+    watchdog_ids = []                # an array containing the ids of watchdogs linked to this server
+    watchdogs = {}                   # A dictionary matching watchdog ids to their object class reference
 
 
     # Init curses output
     curse = Display(scr)
 
-    # Set up socket
+    # Set up UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", 4296))
 
+    curse.updateConnectedNum(watchdogs)
     curse.updateTime()
     time.sleep(1)
     curse.updateTime()
