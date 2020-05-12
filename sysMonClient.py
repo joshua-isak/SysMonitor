@@ -3,8 +3,11 @@ import time
 import psutil
 
 import platform
+from threading import Thread
 
 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #  
 
 def getOS():    # Get OS information+
     os = platform.system()  
@@ -22,13 +25,8 @@ def getOS():    # Get OS information+
     
     return os
 
-def getUptime(): # Get system uptime and return a tuple (days, hours, minutes)
-    seconds = time.time() - psutil.boot_time()
-    min, sec = divmod(seconds, 60)
-    hour, min = divmod(min, 60)
-    day, hour = divmod(hour, 24)
-    
-    return day, hour, min
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #    
+
 
 def init_connection():
     pass
@@ -37,16 +35,21 @@ def send_update():
     pass
 
 def main():
-    # init (relatively) static variables
+    # Init (relatively) static variables
     hostname = socket.gethostname()     # Hostname
-    os = getOS()
-    uptime = getUptime() #TODO when not testing just get psutil.boot_time() and convert on the phone-home server
+    os = getOS()                        # Operating System
+    ram_total = 0                       # Total available RAM
+
+    # Dynamic variables
+    uptime = psutil.boot_time()                 # Uptime
+    cpu_usage = psutil.cpu_percent()            # CPU Usage %
+    ram_usage = psutil.virtual_memory().percent # RAM Usage %
+
+    #processes = 0                              # Number of running processes
+    #users_logged_in = 0                        # Number of users logged in
 
 
-    # Test out variables
-    print("Hostname: " + hostname )
-    print("OS: " + os)
-    print("Uptime: " + str(uptime))
+
 
 main()
 # Get (hopefully) static variables
