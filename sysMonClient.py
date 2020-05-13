@@ -8,6 +8,8 @@ from threading import Thread
 
 
 
+
+
 class Buffer:       # A helper class to aid in writing data to packets
     def __init__(self, size):
         self.data = bytearray(size)
@@ -23,11 +25,11 @@ class Buffer:       # A helper class to aid in writing data to packets
         self.offset += type_bytesize
 
     def write_string(self, string):
-        string.encode('utf-8')
+        string = string.encode('utf-8')
         fmt = str(len(string)) + 's'
         struct.pack_into(fmt, self.data, self.offset, string)
         self.offset += len(string)
-
+        
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #  
 
@@ -52,7 +54,7 @@ def getOS():    # Get OS information+
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #    
 
 
-def init_connection(sock, ip, hostname, os, ram_total):     # Initialize the connection to the server
+def init_connection(connection, hostname, os, ram_total):     # Initialize the connection to the server
     packet = Buffer(512)     # Create a new buffer of 512 bytes to hold outgoing packet data
     packet.prepare_packet(1)        # Packet type 1 is for initial connections from clients
 
@@ -61,7 +63,7 @@ def init_connection(sock, ip, hostname, os, ram_total):     # Initialize the con
     # Write the hostname to the packet
     hostname_len = len(hostname)                # max is 255
     packet.write_real('B', 1, hostname_len)     # 'B' for unsigned char, 1 for # of bytes, last arg is data to write
-    packet.write_string(hostname_len)
+    packet.write_string(hostname)
 
     # Write the os data to the packet
     os_len = len(os)
@@ -71,14 +73,38 @@ def init_connection(sock, ip, hostname, os, ram_total):     # Initialize the con
     # Write the total ram to the packet
     packet.write_real('I', 4, ram_total)        # max is 4,294,967,295. 'I' for unsigned int, 4 bytes in size
 
-    sock.sendto(packet.data, ip)                # send the packet to initialize the connection
+    connection.socket.sendto(packet.data, connection.ip)                # send the packet to initialize the connection
+    time.sleep(4)
 
-    time.sleep(4)       # wait 4 seconds for a response from the server
+    try:
+        data, ip = connection.socket.recvfrom(1024)      # return the server's response (when it arrives)
+        connection.received_data = data
+        connection.ip = ip
+    except BlockingIOError:
+        return 0
 
-    pass
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
 
 def send_update():
     pass
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+
+class WatchdogServer:               # Watchdog server object
+    def __init__(self, ip, port):
+        self.ip = (ip, port)
+        self.received_data = bytearray(5)
+
+        # Set up UDP socket
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # configure socket for ipv4 and UDP#
+        self.socket.bind(("", 4296))                                    # "" means socket will listen to any network source on port 4296
+        self.socket.setblocking(0)                                      # so the program doesn't hang during socket.recv
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
 
@@ -88,8 +114,6 @@ def main():
     # Network Variables
     IP = "zeus.joshuaisak.com"
     PORT = 4296
-    ADDRESS = (IP, PORT)
-    connected = False
     
     # Init (relatively) static variables
     hostname = socket.gethostname()     # Hostname
@@ -101,13 +125,18 @@ def main():
     cpu_usage = psutil.cpu_percent()            # CPU Usage %
     ram_usage = psutil.virtual_memory().percent # RAM Usage %
 
+    # Init connection to server
     print("Connecting to server...")
-    
-    # Set up UDP socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # configure socket for ipv4 and UDP#
-    sock.bind(("", 4296))                                   # "" means socket will listen to any network source on port 4296
+    connection = WatchdogServer(IP, PORT)           # Initialize connection object
 
-    init_connection(sock, ADDRESS, hostname, os, ram_total) # set up connection to watchdog server
+    init_connection(connection, hostname, os, ram_total)                                                         
+
+    if (struct.unpack('B', connection.received_data[1:2])[0] == 2):     # check for a value of 2 in the second byte of the returned packet
+        print("Connected to {}:{} !".format( connection.ip[0], connection.ip[1] ))
+    else:
+        print("Connection to server failed.")            
+        return 0                                        # terminate main() if bad data is received
+
 
 
 main()
