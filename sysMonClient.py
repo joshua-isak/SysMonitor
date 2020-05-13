@@ -55,7 +55,7 @@ def getOS():    # Get OS information+
 
 
 def init_connection(connection, hostname, os, ram_total):     # Initialize the connection to the server
-    packet = Buffer(256)            # Create a new buffer of 512 bytes to hold outgoing packet data
+    packet = Buffer(256)            # Create a new buffer of 256 bytes to hold outgoing packet data
     packet.prepare_packet(1)        # Packet type 1 is for initial connections from clients
 
     # Packet Structure: Padding>Packet_Type>HostnameLen>Hostname>OsLen>OS>RamTotal
@@ -83,12 +83,32 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
     except BlockingIOError:
         return 0
 
+    # handle the received_data (read in our client id)
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-def send_update():
-    pass
+def send_update(connection):
+    # Get some system status updates
+    uptime = psutil.boot_time()                 # Uptime (But really the unix time of the boot, calculate uptime on server)
+    cpu_usage = psutil.cpu_percent()            # CPU Usage %
+    ram_usage = psutil.virtual_memory().percent # RAM Usage %
+
+    packet = Buffer(256)            # Create a new buffer of 256 bytes to hold outgoing packet data
+    packet.prepare_packet(3)        # Packet type 3 is for updates sent from clients  
+
+    # Packet Structure: Padding>Packet_Type>client_id>uptime>cpu_usage>ram_usage
+
+    # Write in this client's id
+    packet.write_real('B', 1, connection.client_id)     # 'B' for unsigned char, 1 for # of bytes
+
+    # Write some status updates
+    packet.write_real('I', 4, uptime)                   # 'I' for unsigned int, 4 for # of bytes, last arg is data to write
+    packet.write_real('f', 4, cpu_usage)                # 'f' for float, 4 for # of bytes
+    packet.write_real('f', 4, ram_usage)
+
+    # Send the packet to the server
+    connection.socket.sendto(packet.data, connection.ip)
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -97,6 +117,7 @@ class WatchdogServer:               # Watchdog server object
     def __init__(self, ip, port):
         self.ip = (ip, port)
         self.received_data = bytearray(5)
+        self.client_id = 0
 
         # Set up UDP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # configure socket for ipv4 and UDP#
@@ -125,17 +146,26 @@ def main():
     cpu_usage = psutil.cpu_percent()            # CPU Usage %
     ram_usage = psutil.virtual_memory().percent # RAM Usage %
 
-    # Init connection to server
-    print("Connecting to server...")
-    connection = WatchdogServer(IP, PORT)           # Initialize connection object
+    print(uptime)
+    print(cpu_usage)
+    print(ram_usage)
 
-    init_connection(connection, hostname, os, ram_total)                                                         
+    # Initialize connection to server
+    print("Connecting to server...")
+    connection = WatchdogServer(IP, PORT)           # Initialize connection object (the socket too!)
+
+    init_connection(connection, hostname, os, ram_total)    # Contact the server and tell it this client's details
 
     if (struct.unpack('B', connection.received_data[1:2])[0] == 2):     # check for a value of 2 in the second byte of the returned packet
-        print("Connected to {}:{} !".format( connection.ip[0], connection.ip[1] ))
+        print("Connected to {}:{}".format( connection.ip[0], connection.ip[1] ))
     else:
         print("Connection to server failed.")            
         return 0                                        # terminate main() if bad data is received
+
+    # Send status updates to the server
+    while True:
+        time.sleep(2)               # How long to wait between sending status updates
+        send_update(connection)
 
 
 
