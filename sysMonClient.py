@@ -55,7 +55,7 @@ def getOS():    # Get OS information+
 
 
 def init_connection(connection, hostname, os, ram_total):     # Initialize the connection to the server
-    packet = Buffer(512)     # Create a new buffer of 512 bytes to hold outgoing packet data
+    packet = Buffer(256)            # Create a new buffer of 512 bytes to hold outgoing packet data
     packet.prepare_packet(1)        # Packet type 1 is for initial connections from clients
 
     # Packet Structure: Padding>Packet_Type>HostnameLen>Hostname>OsLen>OS>RamTotal
