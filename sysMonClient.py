@@ -71,20 +71,24 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
     packet.write_string(os)
 
     # Write the total ram to the packet
-    packet.write_real('I', 4, ram_total)        # max is 4,294,967,295. 'I' for unsigned int, 4 bytes in size
+    packet.write_real('I', 4, ram_total)        # max value is 4,294,967,295. 'I' for unsigned int, 4 bytes in size
 
     connection.socket.sendto(packet.data, connection.ip)                # send the packet to initialize the connection
     time.sleep(4)
 
     try:
         data, ip = connection.socket.recvfrom(1024)      # return the server's response (when it arrives)
-        connection.received_data = data
-        connection.ip = ip
+        print("Got server response")
     except BlockingIOError:
         return 0
 
-    # handle the received_data (read in our client id)
+    connection.received_data = data     # Padding>Packet_Type>client_id
+    connection.ip = ip
 
+    # handle the received_data (read in our client id)
+    connection.client_id = struct.unpack('B', data[2:3])[0]
+
+    
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
@@ -109,6 +113,7 @@ def send_update(connection):
 
     # Send the packet to the server
     connection.socket.sendto(packet.data, connection.ip)
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -135,6 +140,7 @@ def main():
     # Network Variables
     IP = "zeus.joshuaisak.com"
     PORT = 4296
+    UPDATE_INTERVAL = 2     # How many seconds to wait between sending status updates to the server
     
     # Init (relatively) static variables
     hostname = socket.gethostname()     # Hostname
@@ -146,9 +152,6 @@ def main():
     cpu_usage = psutil.cpu_percent()            # CPU Usage %
     ram_usage = psutil.virtual_memory().percent # RAM Usage %
 
-    print(uptime)
-    print(cpu_usage)
-    print(ram_usage)
 
     # Initialize connection to server
     print("Connecting to server...")
@@ -156,6 +159,7 @@ def main():
 
     init_connection(connection, hostname, os, ram_total)    # Contact the server and tell it this client's details
 
+    # Packet type 2 is response from server to client's initial connection request
     if (struct.unpack('B', connection.received_data[1:2])[0] == 2):     # check for a value of 2 in the second byte of the returned packet
         print("Connected to {}:{}".format( connection.ip[0], connection.ip[1] ))
     else:
@@ -164,26 +168,20 @@ def main():
 
     # Send status updates to the server
     while True:
-        time.sleep(2)               # How long to wait between sending status updates
-        send_update(connection)
+        time.sleep(UPDATE_INTERVAL)         # How long to wait between sending status updates
+        send_update(connection)             # Get that status information and send it!
 
 
 
+
+# You already know who it is
 main()
 
 
-# Get (hopefully) static variables
 
-#hostname = socket.gethostname()     # Hostname
-#cpu_usage = psutil.cpu_percent()
 
-#time.sleep(0.1)
-
-#cpu_usage = psutil.cpu_percent()
-
-# Test variables
-#print(hostname)
 #CPU USAGE
+#cpu_usage = psutil.cpu_percent()
 #print(str(cpu_usage) + "%")
 
 # logical cpu count
