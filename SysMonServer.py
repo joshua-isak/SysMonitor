@@ -100,6 +100,8 @@ class Packet:
 
         this_watchdog.ram_usage = int( struct.unpack('f', packet_data[11:15])[0] )  # Update the RAM usage
 
+        this_watchdog.last_contact = time.time()    # mark the time of last contact from the watchdog
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -179,8 +181,9 @@ class Display:
 
         # Draw information about each host as detailed in monitorGUI.test
         for z in watchdogs.values():
-            string = "{} ({}) {}".format(z.hostname, z.status, z.ip_address)
-            self.scr.addstr(line, 0, string, curses.A_UNDERLINE)
+            string = "{} ({}) {} ".format(z.hostname, z.status, z.ip_address)
+            self.scr.addstr(line, 0, string, curses.A_BOLD) # was UNDERLINE
+            self.scr.touchline(line, 1)
             line += 1
             self.scr.addstr(line, 2, "OS:  " + z.os)
             #self.scr.addstr(line, 13, z.os)
@@ -199,7 +202,7 @@ class Display:
             if (z.uptime[2] > 1):
                 min_plur = "s"
 
-            uptime = "{} day{}, {} hour{}, {} min{}   ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
+            uptime = "{} day{}, {} hour{}, {} min{}  ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
             self.scr.addstr(line, 2, "Uptime:  " + uptime)
 
             line += 1
@@ -244,6 +247,25 @@ def getUptime(boot_time): # Get system uptime and return a tuple (days, hours, m
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
+def connectionChecker(server):  # Checks if a watchdog hasn't reported in over 5 seconds and marks it offline
+    while server.running:
+        time.sleep(5)
+
+        for x in server.watchdogs.values():
+            if ((time.time() - x.last_contact) > 4):    # if the time of last contact is greater than 4 seconds
+                # Change watchdog variables to reflect Offline status
+                x.status = "Offline"
+                x.cpu_usage = "-"
+                x.ram_usage = "-"
+
+            else:
+                x.status = "Online"     # if we have heard from the watchdog, set its status to online
+
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+
 def main(scr=""):
     # Init server object
     server = Server()           # TODO move socket initialization into here
@@ -259,6 +281,10 @@ def main(scr=""):
     # Set up display updater thread
     displayUpdaterThread = Thread(target=curse.displayUpdater, args=(server,))
     displayUpdaterThread.start()
+
+    # Set up ifconnected status thread
+    connCheckThread = Thread(target=connectionChecker, args=(server,))
+    connCheckThread.start()
 
     # packet handling loop
     while server.running:
