@@ -86,6 +86,10 @@ class Packet:
         # Packet Structure: Padding>Packet_Type>client_id>uptime>cpu_usage>ram_usage
         
         this_watchdog = struct.unpack('B', packet_data[2:3])[0]     # get the id of the client that sent this update
+
+        if (this_watchdog not in server.watchdogs.keys()):          # stop the handle if the client id is invalid
+            return 0
+
         this_watchdog = server.watchdogs[this_watchdog]             # get the watchdog object we want to update data for
 
         # Update the boot_time
@@ -145,6 +149,7 @@ class Display:
         scr.addstr(3, 0, "Initializing Server...")                          
         scr.refresh()
 
+        #scr.border()    # draws a border around the terminal
         #curses.curs_set(0) # Hide the cursor!
 
 
