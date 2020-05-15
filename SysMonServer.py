@@ -94,7 +94,7 @@ class Packet:
 
         # Update the boot_time
         boot_time = struct.unpack('I', packet_data[3:7])[0]         # extract the unix time of the watchdog's boot
-        this_watchdog.uptime = getUptime(boot_time)                 # turn boot time into a tuple containing days, hours, minutes of uptime
+        this_watchdog.uptime = getSplittime(boot_time)                 # turn boot time into a tuple containing days, hours, minutes of uptime
 
         this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
 
@@ -111,6 +111,8 @@ class Server:               # where server variables live
         self.socket = None
         self.running = True                   # parallel threads will rejoin if this is false
         self.watchdogs = {}                   # A dictionary matching watchdog ids to their object class reference
+        self.online = 0                       # Number of watchdogs currently sending updates
+        self.curse = None
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
@@ -129,6 +131,7 @@ class Watchdog:
 
         # Dynamic variables
         self.status = "Online"
+        self.past_status = 0
         self.uptime = (0,0,0)
         self.cpu_usage = 0
         self.ram_usage = 0
@@ -143,6 +146,7 @@ class Watchdog:
 class Display:
     def __init__(self, scr):
         self.scr = scr
+        self.to_clear = False
 
         # Init curses output
         scr.clear()
@@ -165,13 +169,9 @@ class Display:
         #self.scr.refresh()
 
 
-    def updateConnectedNum(self, watchdogs):
-        total_hosts = len(watchdogs)
-        connected_hosts = 0
-        #for x in watchdogs:
-        #    if host = connected:
-        #        connected_hosts += 1
-        host_string = "{}/{} Host(s) Online    ".format(connected_hosts, total_hosts)
+    def updateConnectedNum(self, server):
+        total_hosts = len(server.watchdogs)
+        host_string = "{}/{} Host(s) Online   ".format(server.online, total_hosts)
         self.scr.addstr(3, 0, host_string)
         #self.scr.refresh()
 
@@ -189,34 +189,44 @@ class Display:
             #self.scr.addstr(line, 13, z.os)
             line += 1
 
-            # Update the uptime
-            up_day = str(z.uptime[0])
-            up_hour = str(z.uptime[1])
-            up_min = str(z.uptime[2])
+            if (z.status == "Online"):
+                # Update the uptime
+                up_day = str(z.uptime[0])
+                up_hour = str(z.uptime[1])
+                up_min = str(z.uptime[2])
 
-            day_plur, hour_plur, min_plur = "", "", ""    # handling for plural days, minutes...
-            if (z.uptime[0] > 1):
-                day_plur = "s"
-            if (z.uptime[1] > 1):
-                hour_plur = "s"
-            if (z.uptime[2] > 1):
-                min_plur = "s"
+                day_plur, hour_plur, min_plur = "", "", ""    # handling for plural days, minutes...
+                if (z.uptime[0] > 1):
+                    day_plur = "s"
+                if (z.uptime[1] > 1):
+                    hour_plur = "s"
+                if (z.uptime[2] > 1):
+                    min_plur = "s"
 
-            uptime = "{} day{}, {} hour{}, {} min{}  ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
-            self.scr.addstr(line, 2, "Uptime:  " + uptime)
+                uptime = "{} day{}, {} hour{}, {} min{}  ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
+                self.scr.addstr(line, 2, "Uptime:  " + uptime)
 
-            line += 1
-            self.scr.addstr(line, 2, "CPU Usage:  " + str(z.cpu_usage) + "%  ")
-            line += 1
-            self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
+                line += 1
+                self.scr.addstr(line, 2, "CPU Usage:  " + str(z.cpu_usage) + "%  ")
+                line += 1
+                self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
+            else:
+                self.scr.addstr(line, 2, "Last seen:  ")
+
             line += 2
 
 
     def displayUpdater(self, server):   # Thread to update the display every second
         while server.running:
             time.sleep(1)
+
+            if self.to_clear:
+                self.scr.clear()    # clear the whole window
+                self.scr.addstr(0, 0, "SysMonitor Dashboard v" + VERSION) # Version Info
+                self.to_clear = False
+
             self.updateTime()
-            self.updateConnectedNum(server.watchdogs)
+            self.updateConnectedNum(server)
             self.updateConnectedHosts(server.watchdogs)
 
             #self.scr.move(5, 0)
@@ -231,7 +241,7 @@ class Display:
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-def getUptime(boot_time): # Get system uptime and return a tuple (days, hours, minutes)
+def getSplittime(boot_time): # Get system uptime and return a tuple (days, hours, minutes)
     seconds = time.time() - boot_time #psutil.boot_time()
     minute, sec = divmod(seconds, 60)
     hour, minute = divmod(minute, 60)
@@ -251,6 +261,7 @@ def connectionChecker(server):  # Checks if a watchdog hasn't reported in over 5
     while server.running:
         time.sleep(5)
 
+        server.online = 0
         for x in server.watchdogs.values():
             if ((time.time() - x.last_contact) > 4):    # if the time of last contact is greater than 4 seconds
                 # Change watchdog variables to reflect Offline status
@@ -258,8 +269,18 @@ def connectionChecker(server):  # Checks if a watchdog hasn't reported in over 5
                 x.cpu_usage = "-"
                 x.ram_usage = "-"
 
+                if x.past_status == 1:  # Check if there was a change in connection status, redraw the screen if so
+                    x.past_status = 0
+                    server.curse.to_clear = True
+
+
             else:
                 x.status = "Online"     # if we have heard from the watchdog, set its status to online
+                server.online += 1
+
+                if x.past_status == 0:  
+                    x.past_status = 1
+                    server.curse.to_clear = True
 
 
 
@@ -272,6 +293,7 @@ def main(scr=""):
 
     # Init curses output
     curse = Display(scr)
+    server.curse = curse
 
     # Set up UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
