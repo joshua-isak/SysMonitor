@@ -10,7 +10,7 @@ from threading import Thread
 
 
 
-class Buffer:       # A helper class to aid in writing data to packets
+class Buffer:       # A helper to aid in writing data to packets
     def __init__(self, size):
         self.data = bytearray(size)
         self.offset = 0
@@ -78,10 +78,10 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
 
     try:
         data, ip = connection.socket.recvfrom(1024)      # return the server's response (when it arrives)
-        print("Got server response")
     except BlockingIOError:
         return 0
 
+    print("Got server response")
     connection.received_data = data     # Padding>Packet_Type>client_id
     connection.ip = ip
 
@@ -94,7 +94,7 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
 
 def send_update(connection):
     # Get some system status updates
-    uptime = psutil.boot_time()                 # Uptime (But really the unix time of the boot, calculate uptime on server)
+    uptime = int(psutil.boot_time())            # Uptime (But really boot_time) needs to be cast to an int cuz psutil returns a float
     cpu_usage = psutil.cpu_percent()            # CPU Usage %
     ram_usage = psutil.virtual_memory().percent # RAM Usage %
 
@@ -113,6 +113,7 @@ def send_update(connection):
 
     # Send the packet to the server
     connection.socket.sendto(packet.data, connection.ip)
+    print("Sent status update")
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
@@ -126,7 +127,7 @@ class WatchdogServer:               # Watchdog server object
 
         # Set up UDP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # configure socket for ipv4 and UDP#
-        self.socket.bind(("", 4296))                                    # "" means socket will listen to any network source on port 4296
+        self.socket.bind(("", port))                                    # "" means socket will listen to any network source on port 4296
         self.socket.setblocking(0)                                      # so the program doesn't hang during socket.recv
 
 

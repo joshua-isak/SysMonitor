@@ -12,8 +12,30 @@ VERSION = "0.1"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
+class Buffer:       # A helper to aid in writing data to packets
+    def __init__(self, size):
+        self.data = bytearray(size)
+        self.offset = 0
+
+    def prepare_packet(self, packet_type):
+        struct.pack_into('BB', self.data, self.offset, 0, packet_type)
+        self.offset += 2
+
+    def write_real(self, real_type, type_bytesize, value):
+        fmt = '<' + real_type
+        struct.pack_into(fmt, self.data, self.offset, value)
+        self.offset += type_bytesize
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+
 # Packet handling
 class Packet:
+    def send_packet(self, server, packet_data, packet_ip):  # Send a packet containing packet_data to packet_ip
+        server.socket.sendto(packet_data, packet_ip)    
+
+
     def handle_initial_connection(self, server, packet_data, packet_ip):
         # Generate a new random uid that is not already in use and assign it to the new watchdog object
         while True:                                         
@@ -49,11 +71,29 @@ class Packet:
         new_watchdog.ram_total = 69420
 
         # set the ip address of the watchdog
-        new_watchdog.ip_address = packet_ip[0]      # Packet ip is a tuple (ip, port), this sets the address to only the ip 
+        new_watchdog.ip_address = packet_ip[0]          # Packet ip is a tuple (ip, port), this sets the address to only the ip
+
+        # send a response to the watchdog client saying that their inital connection has been successfully processed
+        new_packet = Buffer(64)
+        new_packet.prepare_packet(2)                    # packet type 2 is for responses to the initial connection request
+        new_packet.write_real('B', 1, new_watchdog.id)  # write the watchdog client's uid (which it will use when sending update communications)
+ 
+        server.socket.sendto(new_packet.data, packet_ip)            # send the response
 
 
-    def handle_watchdog_update(self):
-        pass
+    def handle_watchdog_update(self, server, packet_data):
+        # Packet Structure: Padding>Packet_Type>client_id>uptime>cpu_usage>ram_usage
+        
+        this_watchdog = struct.unpack('B', packet_data[2:3])[0]     # get the id of the client that sent this update
+        this_watchdog = server.watchdogs[this_watchdog]             # get the watchdog object we want to update data for
+
+        # Update the boot_time
+        boot_time = struct.unpack('I', packet_data[3:7])[0]         # extract the unix time of the watchdog's boot
+        this_watchdog.uptime = getUptime(boot_time)                 # turn boot time into a tuple containing days, hours, minutes of uptime
+
+        this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
+
+        this_watchdog.ram_usage = int( struct.unpack('f', packet_data[11:15])[0] )  # Update the RAM usage
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
@@ -63,8 +103,8 @@ class Server:               # where server variables live
     def __init__(self):
         self.socket = None
         self.running = True                   # parallel threads will rejoin if this is false
-        #self.watchdog_ids = []               # an array containing the ids of watchdogs linked to this server
         self.watchdogs = {}                   # A dictionary matching watchdog ids to their object class reference
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -82,9 +122,9 @@ class Watchdog:
 
         # Dynamic variables
         self.status = "Online"
-        self.uptime = None
-        self.cpu_usage = None
-        self.ram_usage = None
+        self.uptime = (0,0,0)
+        self.cpu_usage = 0
+        self.ram_usage = 0
 
         self.last_contact = 0
 
@@ -133,16 +173,32 @@ class Display:
         # Draw information about each host as detailed in monitorGUI.test
         for z in watchdogs.values():
             string = "{} ({}) {}".format(z.hostname, z.status, z.ip_address)
-            self.scr.addstr(line, 0, string)
+            self.scr.addstr(line, 0, string, curses.A_UNDERLINE)
             line += 1
-            self.scr.addstr(line, 2, "OS:")
-            self.scr.addstr(line, 13, z.os)
+            self.scr.addstr(line, 2, "OS:  " + z.os)
+            #self.scr.addstr(line, 13, z.os)
             line += 1
-            self.scr.addstr(line, 2, "Uptime:")
+
+            # Update the uptime
+            up_day = str(z.uptime[0])
+            up_hour = str(z.uptime[1])
+            up_min = str(z.uptime[2])
+
+            day_plur, hour_plur, min_plur = "", "", ""    # handling for plural days, minutes...
+            if (z.uptime[0] > 1):
+                day_plur = "s"
+            if (z.uptime[1] > 1):
+                hour_plur = "s"
+            if (z.uptime[2] > 1):
+                min_plur = "s"
+
+            uptime = "{} day{}, {} hour{}, {} min{}   ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
+            self.scr.addstr(line, 2, "Uptime:  " + uptime)
+
             line += 1
-            self.scr.addstr(line, 2, "CPU Usage:")
+            self.scr.addstr(line, 2, "CPU Usage:  " + str(z.cpu_usage) + "%  ")
             line += 1
-            self.scr.addstr(line, 2, "RAM Usage:")
+            self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
             line += 2
 
 
@@ -151,7 +207,6 @@ class Display:
             time.sleep(1)
             self.updateTime()
             self.updateConnectedNum(server.watchdogs)
-
             self.updateConnectedHosts(server.watchdogs)
 
             #self.scr.move(5, 0)
@@ -167,7 +222,11 @@ def getUptime(boot_time): # Get system uptime and return a tuple (days, hours, m
     hour, minute = divmod(minute, 60)
     day, hour = divmod(hour, 24)
     
-    return day, hour, minute
+    day = int(day)
+    hour = int(hour)
+    minute = int(minute)
+
+    return (day, hour, minute)
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
