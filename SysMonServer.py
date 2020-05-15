@@ -5,6 +5,7 @@ import socket
 import struct
 from threading import Thread
 import random
+import sys
 
 VERSION = "0.1"
 
@@ -139,7 +140,8 @@ class Display:
 
         # Init curses output
         scr.clear()
-        scr.addstr(0, 0, "SysMonitor Dashboard v" + VERSION)  # Version Info
+        scr.nodelay(1)                                          # makes getch() non-blocking
+        scr.addstr(0, 0, "SysMonitor Dashboard v" + VERSION)    # Version Info
         scr.addstr(3, 0, "Initializing Server...")                          
         scr.refresh()
 
@@ -212,6 +214,11 @@ class Display:
             #self.scr.move(5, 0)
             self.scr.refresh()
 
+            # stop the server if "Q" is pressed, send a packet looped back into the socket to break packet loop in main()
+            ch = self.scr.getch()
+            if (ch == ord('q')):            
+                server.running = False
+                server.socket.sendto("wow".encode('utf-8'), ("127.0.0.1", 4296))
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -270,8 +277,9 @@ def main(scr=""):
 
 
     # No way to get down here with the above running in a loop eh?
-    time.sleep(10)
+    time.sleep(1)
     server.running = False
+    print("Server shut down successfully")
 
 
 
