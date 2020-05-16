@@ -2,6 +2,7 @@ import socket
 import time
 import psutil
 import struct
+import sys
 
 import platform
 from threading import Thread
@@ -81,7 +82,6 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
     except BlockingIOError:
         return 0
 
-    print("Got server response")
     connection.received_data = data     # Padding>Packet_Type>client_id
     connection.ip = ip
 
@@ -113,7 +113,7 @@ def send_update(connection):
 
     # Send the packet to the server
     connection.socket.sendto(packet.data, connection.ip)
-    print("Sent status update")
+    #print("Sent status update")
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
@@ -136,11 +136,19 @@ class WatchdogServer:               # Watchdog server object
 
 
 def main():
+
+    try:
+        IP = str(sys.argv[1])
+        PORT = int(sys.argv[2])
+    except:
+        print("[*] Usage: python3 SysMonClient.py <IP> <PORT>")
+        sys.exit()
+
     print("Initializing...")
 
     # Network Variables
-    IP = "zeus.joshuaisak.com"
-    PORT = 4296
+    #IP = "zeus.joshuaisak.com"
+    #PORT = 4296
     UPDATE_INTERVAL = 2     # How many seconds to wait between sending status updates to the server
     
     # Init (relatively) static variables
