@@ -49,6 +49,8 @@ class Packet:
 
         server.watchdogs[new_id] = new_watchdog     # Add this new watchdog object to the server's dictionary of watchdogs
 
+        # Packet Structure: Padding>Packet_Type>HostnameLen>Hostname>OsLen>OS>RamTotal>BatteryPercent
+
         # Set the watchdog's Hostname (TODO This needs its own Buffer.unpack class and method or something)
         hostname_len = struct.unpack('B', packet_data[2:3])[0]      # Get the hostname's length
         fmt = str(hostname_len) + 's'                               # format for unpacking the hostname with struct
@@ -68,8 +70,16 @@ class Packet:
         os = struct.unpack(fmt, packet_data[start:end])[0]
         new_watchdog.os = os.decode('utf-8')
         
+        start = end     # set start and end read variables for position of ram_total 4byte integer
+        end = start + 4
         # screw the ram_total for now lol... TODO actually implement this
         new_watchdog.ram_total = 69420
+
+        start = end     # set start and end read variables for position of battery 1byte char
+        end = start + 1
+        # get the battery percent if applicable
+        battery = struct.unpack('B', packet_data[start:end])[0]
+        new_watchdog.battery = battery
 
         # set the ip address of the watchdog
         new_watchdog.ip_address = packet_ip[0]          # Packet ip is a tuple (ip, port), this sets the address to only the ip
@@ -99,6 +109,8 @@ class Packet:
         this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
 
         this_watchdog.ram_usage = int( struct.unpack('f', packet_data[11:15])[0] )  # Update the RAM usage
+
+        this_watchdog.battery = int( struct.unpack('B', packet_data[15:16])[0] )    # Update the Battery percentage
 
         this_watchdog.last_contact = time.time()    # mark the time of last contact from the watchdog
 
@@ -135,6 +147,7 @@ class Watchdog:
         self.uptime = (0,0,0)
         self.cpu_usage = 0
         self.ram_usage = 0
+        self.battery = 0
 
         self.last_contact = 0
 
@@ -210,8 +223,12 @@ class Display:
                 self.scr.addstr(line, 2, "CPU Usage:  " + str(z.cpu_usage) + "%  ")
                 line += 1
                 self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
+
+                if (z.battery > 1):
+                    line += 1
+                    self.scr.addstr(line, 2, "Battery:  " + str(z.battery) + "%   ")
             else:
-                self.scr.addstr(line, 2, "Last seen:  ")
+                self.scr.addstr(line, 2, "Last seen: TODO, IMPLEMENT LASTSEEN ")
 
             line += 2
 

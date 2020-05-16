@@ -47,7 +47,7 @@ def getOS():    # Get OS information+
         os = os + " " + platform.release() + " v" + platform.version()
 
     elif(os == 'Darwin'):
-        os = "TODO, IMPLEMENT MacOS"    #TODO, implement MacOS
+        os = "OSX " + platform.mac_ver()[0]
     
     return os
 
@@ -55,11 +55,11 @@ def getOS():    # Get OS information+
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #    
 
 
-def init_connection(connection, hostname, os, ram_total):     # Initialize the connection to the server
+def init_connection(connection, hostname, os, ram_total, mobile):     # Initialize the connection to the server
     packet = Buffer(256)            # Create a new buffer of 256 bytes to hold outgoing packet data
     packet.prepare_packet(1)        # Packet type 1 is for initial connections from clients
 
-    # Packet Structure: Padding>Packet_Type>HostnameLen>Hostname>OsLen>OS>RamTotal
+    # Packet Structure: Padding>Packet_Type>HostnameLen>Hostname>OsLen>OS>RamTotal>BatteryPercent
     
     # Write the hostname to the packet
     hostname_len = len(hostname)                # max is 255
@@ -73,6 +73,11 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
 
     # Write the total ram to the packet
     packet.write_real('I', 4, ram_total)        # max value is 4,294,967,295. 'I' for unsigned int, 4 bytes in size
+
+    # Write the battery percentage (if applicable)
+    if (mobile):
+        battery = psutil.sensors_battery()[0]
+        packet.write_real('B', 1, mobile)
 
     connection.socket.sendto(packet.data, connection.ip)                # send the packet to initialize the connection
     time.sleep(4)
@@ -92,16 +97,20 @@ def init_connection(connection, hostname, os, ram_total):     # Initialize the c
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-def send_update(connection):
+def send_update(connection, mobile):
     # Get some system status updates
     uptime = int(psutil.boot_time())            # Uptime (But really boot_time) needs to be cast to an int cuz psutil returns a float
     cpu_usage = psutil.cpu_percent()            # CPU Usage %
     ram_usage = psutil.virtual_memory().percent # RAM Usage %
+    if (mobile):
+        battery = psutil.sensors_battery()[0]   # Battery %
+    else:
+        battery = 0
 
     packet = Buffer(256)            # Create a new buffer of 256 bytes to hold outgoing packet data
     packet.prepare_packet(3)        # Packet type 3 is for updates sent from clients  
 
-    # Packet Structure: Padding>Packet_Type>client_id>uptime>cpu_usage>ram_usage
+    # Packet Structure: Padding>Packet_Type>client_id>uptime>cpu_usage>ram_usage>BatteryPercent
 
     # Write in this client's id
     packet.write_real('B', 1, connection.client_id)     # 'B' for unsigned char, 1 for # of bytes
@@ -110,6 +119,8 @@ def send_update(connection):
     packet.write_real('I', 4, uptime)                   # 'I' for unsigned int, 4 for # of bytes, last arg is data to write
     packet.write_real('f', 4, cpu_usage)                # 'f' for float, 4 for # of bytes
     packet.write_real('f', 4, ram_usage)
+
+    packet.write_real('B', 1, battery)             
 
     # Send the packet to the server
     connection.socket.sendto(packet.data, connection.ip)
@@ -137,11 +148,13 @@ class WatchdogServer:               # Watchdog server object
 
 def main():
 
+    # Get arguments for IP and PORT from command line
     try:
         IP = str(sys.argv[1])
         PORT = int(sys.argv[2])
+        MOBILE = int(sys.argv[3])   # 1 or 0 (1 being this client has a battery)
     except:
-        print("[*] Usage: python3 SysMonClient.py <IP> <PORT>")
+        print("[*] Usage: python3 SysMonClient.py <IP> <PORT> <MOBILE>")
         sys.exit()
 
     print("Initializing...")
@@ -166,7 +179,7 @@ def main():
     print("Connecting to server...")
     connection = WatchdogServer(IP, PORT)           # Initialize connection object (the socket too!)
 
-    init_connection(connection, hostname, os, ram_total)    # Contact the server and tell it this client's details
+    init_connection(connection, hostname, os, ram_total, MOBILE)    # Contact the server and tell it this client's details
 
     # Packet type 2 is response from server to client's initial connection request
     if (struct.unpack('B', connection.received_data[1:2])[0] == 2):     # check for a value of 2 in the second byte of the returned packet
@@ -178,7 +191,7 @@ def main():
     # Send status updates to the server
     while True:
         time.sleep(UPDATE_INTERVAL)         # How long to wait between sending status updates
-        send_update(connection)             # Get that status information and send it!
+        send_update(connection, MOBILE)             # Get that status information and send it!
 
 
 
