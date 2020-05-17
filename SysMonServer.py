@@ -104,7 +104,7 @@ class Packet:
 
         # Update the boot_time
         boot_time = struct.unpack('I', packet_data[3:7])[0]             # extract the unix time of the watchdog's boot
-        this_watchdog.uptime = getTimeTuple(time.time() - boot_time)    # turn boot time into a tuple containing days, hours, minutes of uptime
+        this_watchdog.uptime = time.time() - boot_time    
 
         this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
 
@@ -199,39 +199,24 @@ class Display:
             self.scr.touchline(line, 1)
             line += 1
             self.scr.addstr(line, 2, "OS:  " + z.os)
-            #self.scr.addstr(line, 13, z.os)
             line += 1
 
             if (z.status == "Online"):
-                # Update the uptime
-                up_day = str(z.uptime[0])
-                up_hour = str(z.uptime[1])
-                up_min = str(z.uptime[2])
-
-                day_plur, hour_plur, min_plur = "", "", ""    # handling for plural days, minutes...
-                if (z.uptime[0] > 1):
-                    day_plur = "s"
-                if (z.uptime[1] > 1):
-                    hour_plur = "s"
-                if (z.uptime[2] > 1):
-                    min_plur = "s"
-
-                uptime = "{} day{}, {} hour{}, {} min{}  ".format(up_day, day_plur, up_hour, hour_plur, up_min, min_plur)
-                self.scr.addstr(line, 2, "Uptime:  " + uptime)
-
+                self.scr.addstr(line, 2, "Uptime:  " + getTimeString(z.uptime))
                 line += 1
                 self.scr.addstr(line, 2, "CPU Usage:  " + str(z.cpu_usage) + "%  ")
                 line += 1
                 self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
 
             elif (z.status == "Offline"):
-                self.scr.addstr(line, 2, "Last seen: " + getTimeString(time.time() - z.last_contact))
+                self.scr.addstr(line, 2, "Last seen: " + getTimeString(time.time() - z.last_contact) + "ago ")
 
             if (z.battery > 1):
                 line += 1
                 self.scr.addstr(line, 2, "Battery:  " + str(z.battery) + "%   ")
 
             line += 2
+            self.scr.move(line, 0)      # move the cursor out of the way
 
 
     def displayUpdater(self, server):   # Thread to update the display every second
@@ -246,8 +231,7 @@ class Display:
             self.updateTime()
             self.updateConnectedNum(server)
             self.updateConnectedHosts(server.watchdogs)
-
-            #self.scr.move(5, 0)
+            
             self.scr.refresh()
 
             # stop the server if "Q" is pressed, send a packet looped back into the socket to break packet loop in main()
@@ -300,7 +284,7 @@ def getTimeString(time):    # Return a string containing time as a string in the
     elif (minute == 0):
         min_plur = "s"
     
-    time_string += "{} minute{} ".format(str(minute), min_plur) + "ago"
+    time_string += "{} minute{} ".format(str(minute), min_plur)
 
     return time_string
 
