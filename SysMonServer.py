@@ -103,8 +103,8 @@ class Packet:
         this_watchdog = server.watchdogs[this_watchdog]             # get the watchdog object we want to update data for
 
         # Update the boot_time
-        boot_time = struct.unpack('I', packet_data[3:7])[0]         # extract the unix time of the watchdog's boot
-        this_watchdog.uptime = getSplittime(boot_time)                 # turn boot time into a tuple containing days, hours, minutes of uptime
+        boot_time = struct.unpack('I', packet_data[3:7])[0]             # extract the unix time of the watchdog's boot
+        this_watchdog.uptime = getTimeTuple(time.time() - boot_time)    # turn boot time into a tuple containing days, hours, minutes of uptime
 
         this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
 
@@ -142,7 +142,7 @@ class Watchdog:
         self.ram_total = None
 
         # Dynamic variables
-        self.status = "Online"
+        self.status = "Connecting"
         self.past_status = 0
         self.uptime = (0,0,0)
         self.cpu_usage = 0
@@ -194,8 +194,8 @@ class Display:
 
         # Draw information about each host as detailed in monitorGUI.test
         for z in watchdogs.values():
-            string = "{} ({}) {} ".format(z.hostname, z.status, z.ip_address)
-            self.scr.addstr(line, 0, string, curses.A_BOLD) # was UNDERLINE
+            string = " {} ({}) {} ".format(z.hostname, z.status, z.ip_address)
+            self.scr.addstr(line, 0, string, curses.A_REVERSE) # was UNDERLINE
             self.scr.touchline(line, 1)
             line += 1
             self.scr.addstr(line, 2, "OS:  " + z.os)
@@ -224,11 +224,12 @@ class Display:
                 line += 1
                 self.scr.addstr(line, 2, "RAM Usage:  " + str(z.ram_usage) + "%  ")
 
-                if (z.battery > 1):
-                    line += 1
-                    self.scr.addstr(line, 2, "Battery:  " + str(z.battery) + "%   ")
-            else:
-                self.scr.addstr(line, 2, "Last seen: TODO, IMPLEMENT LASTSEEN ")
+            elif (z.status == "Offline"):
+                self.scr.addstr(line, 2, "Last seen: " + getTimeString(time.time() - z.last_contact))
+
+            if (z.battery > 1):
+                line += 1
+                self.scr.addstr(line, 2, "Battery:  " + str(z.battery) + "%   ")
 
             line += 2
 
@@ -258,8 +259,8 @@ class Display:
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
 
-def getSplittime(boot_time): # Get system uptime and return a tuple (days, hours, minutes)
-    seconds = time.time() - boot_time #psutil.boot_time()
+def getTimeTuple(time): # Get system uptime and return a tuple (days, hours, minutes)
+    seconds = time
     minute, sec = divmod(seconds, 60)
     hour, minute = divmod(minute, 60)
     day, hour = divmod(hour, 24)
@@ -269,6 +270,39 @@ def getSplittime(boot_time): # Get system uptime and return a tuple (days, hours
     minute = int(minute)
 
     return (day, hour, minute)
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+
+def getTimeString(time):    # Return a string containing time as a string in the form day(s), hour(s), min(s)
+    time = getTimeTuple(time)
+
+    day = time[0]
+    hour = time[1]
+    minute = time[2]
+
+    time_string = ""
+
+    day_plur, hour_plur, min_plur = "", "", ""    # handling for plural days, minutes...
+    if (day):
+        if (day > 1):
+            day_plur = "s"
+        time_string += "{} day{}, ".format(str(day), day_plur)
+
+    if (hour):
+        if (hour > 1):
+            hour_plur = "s"
+        time_string += "{} hour{}, ".format(str(hour), hour_plur)
+
+    if (minute > 1):
+        min_plur = "s"
+    elif (minute == 0):
+        min_plur = "s"
+    
+    time_string += "{} minute{} ".format(str(minute), min_plur) + "ago"
+
+    return time_string
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
@@ -289,7 +323,6 @@ def connectionChecker(server):  # Checks if a watchdog hasn't reported in over 5
                 if x.past_status == 1:  # Check if there was a change in connection status, redraw the screen if so
                     x.past_status = 0
                     server.curse.to_clear = True
-
 
             else:
                 x.status = "Online"     # if we have heard from the watchdog, set its status to online
