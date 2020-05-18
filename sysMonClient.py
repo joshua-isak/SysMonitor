@@ -12,7 +12,7 @@ from threading import Thread
 
 
 class Buffer:       # A helper to aid in writing data to packets
-    def __init__(self, size):
+    def __init__(self, size=128):
         self.data = bytearray(size)
         self.offset = 0
 
@@ -44,12 +44,21 @@ def getOS():    # Get OS information+
         os = linux_info[0] + " " + linux_info[1] + " " + linux_info[2]
 
     elif (os == 'Windows'):
-        os = os + " " + platform.release() + " v" + platform.version()
+        os = os + " " + platform.release() #+ " v" + platform.version()
 
     elif(os == 'Darwin'):
         os = "OSX " + platform.mac_ver()[0]
     
     return os
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
+
+
+def send_packet(data, connection):
+    try:
+        connection.socket.sendto(data, connection.ip)
+    except:
+        pass
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #    
@@ -77,10 +86,12 @@ def init_connection(connection, hostname, os, ram_total, mobile):     # Initiali
     # Write the battery percentage (if applicable)
     if (mobile):
         battery = psutil.sensors_battery()[0]
-        packet.write_real('B', 1, mobile)
+        packet.write_real('B', 1, battery)
 
-    connection.socket.sendto(packet.data, connection.ip)                # send the packet to initialize the connection
-    time.sleep(4)
+    #connection.socket.sendto(packet.data, connection.ip)                # send the packet to initialize the connection
+    send_packet(packet.data, connection)
+
+    time.sleep(4)           # Wait 4 seconds then check for a response
 
     try:
         data, ip = connection.socket.recvfrom(1024)      # return the server's response (when it arrives)
@@ -123,7 +134,8 @@ def send_update(connection, mobile):
     packet.write_real('B', 1, battery)             
 
     # Send the packet to the server
-    connection.socket.sendto(packet.data, connection.ip)
+    #connection.socket.sendto(packet.data, connection.ip)
+    send_packet(packet.data, connection)
     #print("Sent status update")
 
 
@@ -200,20 +212,5 @@ def main():
 main()
 
 
-
-
-#CPU USAGE
-#cpu_usage = psutil.cpu_percent()
-#print(str(cpu_usage) + "%")
-
-# logical cpu count
-#print(psutil.cpu_count())
-
-
-#print(psutil.disk_usage('/'))
-
-#UPTIME
-#print(psutil.boot_time())
-
-#RAM
-#print(psutil.virtual_memory().percent)
+# TODO Config File
+# TODO Socket reset upon network change
