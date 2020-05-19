@@ -107,11 +107,8 @@ class Packet:
         this_watchdog.uptime = time.time() - boot_time    
 
         this_watchdog.cpu_usage = int( struct.unpack('f', packet_data[7:11])[0] )   # Update the CPU usage
-
         this_watchdog.ram_usage = int( struct.unpack('f', packet_data[11:15])[0] )  # Update the RAM usage
-
         this_watchdog.battery = int( struct.unpack('B', packet_data[15:16])[0] )    # Update the Battery percentage
-
         this_watchdog.last_contact = time.time()    # mark the time of last contact from the watchdog
 
 
@@ -216,7 +213,14 @@ class Display:
                 self.scr.addstr(line, 2, "Battery:  " + str(z.battery) + "%   ")
 
             line += 2
-            self.scr.move(line, 0)      # move the cursor out of the way
+            #self.scr.move(line, 0)      # move the cursor out of the way
+
+    def displaySizeError(self):
+        # Display an error that the screen is too small
+        self.scr.clear()
+        self.scr.addstr(0,0, "Screen Too Small!")
+        self.scr.refresh()
+        self.to_clear = True
 
 
     def displayUpdater(self, server):   # Thread to update the display every second
@@ -228,11 +232,13 @@ class Display:
                 self.scr.addstr(0, 0, "SysMonitor Dashboard v" + VERSION) # Version Info
                 self.to_clear = False
 
-            self.updateTime()
-            self.updateConnectedNum(server)
-            self.updateConnectedHosts(server.watchdogs)
-            
-            self.scr.refresh()
+            try:
+                self.updateTime()
+                self.updateConnectedNum(server)
+                self.updateConnectedHosts(server.watchdogs)
+                self.scr.refresh()
+            except:
+                self.displaySizeError()     # Display an error if the screen is too small to list everything
 
             # stop the server if "Q" is pressed, send a packet looped back into the socket to break packet loop in main()
             ch = self.scr.getch()
